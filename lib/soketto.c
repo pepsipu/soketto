@@ -9,6 +9,11 @@
 #define BAD_ADDRESS -2
 #define CONN_ERR -3
 
+enum PacketTypes {
+    DataPacket = 0,
+    ClosePacket,
+};
+
 
 struct sokettoClientFunctionTable {
     ssize_t (*send)(skClient *self, void *buf, size_t len);
@@ -23,7 +28,7 @@ typedef struct sokettoClientConnection {
     struct sokettoClientFunctionTable *ft;
 } skClient;
 
-typedef struct sokettoDataPacket {
+typedef struct sokettoPacketHeader {
     uint32_t packet_size;
     uint8_t packet_id;
     uint8_t data[];
@@ -55,9 +60,18 @@ skClient *skClientConnect(uint16_t port, char *address, int8_t *err) {
 }
 
 ssize_t sokettoSend(skClient *self, void *buf, size_t len) {
-    size_t packet_size = sizeof(skPacket) + len;
-    skPacket *packet = malloc(packet_size);
-    packet->packet_size = (uint32_t) len;
-    memcpy(packet->data, buf, len);
-    return send(self->sock_fd, (void *) packet, packet_size, 0);
+    skPacket packet;
+    packet.packet_size = (uint32_t) len;
+    packet.packet_id = DataPacket;
+    return send(self->sock_fd, (void *) &packet, sizeof(skPacket), 0) + send(self->sock_fd, buf, len, 0);
+}
+
+int sokettoClose(skClient *self) {
+    skPacket packet;
+    packet.packet_size = 0;
+    packet.packet_id = ClosePacket;
+    if (send(self->sock_fd, &packet, sizeof(skPacket), 0) < 0) {
+        return -1;
+    }
+    return close(self->sock_fd);
 }
